@@ -25,11 +25,15 @@ function makeRequest(method, url, body = null, expectedStatuses = [200], operati
 
   const statuses = Array.isArray(expectedStatuses) ? expectedStatuses : [expectedStatuses];
 
+  // URLs contain UUIDs; without a grouped "name" tag k6 creates a time series per URL
+  // (millions in a long test) and its own memory/CPU use distorts the measurements.
+  const endpoint = url.replace(/\/[0-9a-f-]{36}/g, '/:id');
   const params = {
     headers: DEFAULT_HEADERS,
     tags: {
       type: operationType,
-      endpoint: url.replace(/\/[0-9a-f-]{36}/g, '/:id'),
+      endpoint,
+      name: `${method} ${endpoint}`,
     },
     responseCallback: http.expectedStatuses(...statuses),
   };

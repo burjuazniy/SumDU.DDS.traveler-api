@@ -1,52 +1,57 @@
-// Aggregates k6 JSON output (k6 run --out json=run.json.gz) into time windows:
-// VUs, requests/s, avg / p95 latency and error rate per window. Prints a table and writes CSV.
-// Usage: node timeline.js <run.json.gz> [windowSeconds=15] [out.csv]
+// Turns a k6 web-dashboard recording (K6_WEB_DASHBOARD_RECORD=run.ndjson.gz) into a per-period table:
+// VUs, requests/s, avg / p95 latency and error rate. Unlike `--out json` the recording is
+// pre-aggregated by k6, so producing it does not load the machine under test.
+// Usage: node timeline.js <run.ndjson.gz> [out.csv] [groupPeriods=1]
 import { createReadStream, writeFileSync } from 'node:fs';
 import { createGunzip } from 'node:zlib';
 import { createInterface } from 'node:readline';
 
-const [file, windowArg = '15', csvOut] = process.argv.slice(2);
-const W = Number(windowArg) * 1000;
-const input = file.endsWith('.gz') ? createReadStream(file).pipe(createGunzip()) : createReadStream(file);
+const [file, csvOut, groupArg = '1'] = process.argv.slice(2);
+const group = Number(groupArg);
+const AGG = { trend: ['avg', 'max', 'med', 'min', 'p(90)', 'p(95)', 'p(99)'], counter: ['count', 'rate'], rate: ['rate'], gauge: ['value'] };
 
-const buckets = new Map();
-let t0 = null;
-const bucket = (ts) => {
-  const t = Date.parse(ts);
-  if (t0 === null) t0 = t;
-  const k = Math.floor((t - t0) / W);
-  if (!buckets.has(k)) buckets.set(k, { dur: [], failed: 0, reqs: 0, vus: 0 });
-  return buckets.get(k);
-};
+const meta = {}; // name -> type; snapshot arrays follow the alphabetical order of known metrics
+let period = 10000;
+let start = null;
+const snaps = [];
 
-for await (const line of createInterface({ input })) {
-  if (!line.startsWith('{"metric"') && !line.includes('"type":"Point"')) continue;
-  const p = JSON.parse(line);
-  if (p.type !== 'Point') continue;
-  const b = bucket(p.data.time);
-  if (p.metric === 'http_req_duration') b.dur.push(p.data.value);
-  else if (p.metric === 'http_req_failed') { b.reqs++; b.failed += p.data.value; }
-  else if (p.metric === 'vus') b.vus = Math.max(b.vus, p.data.value);
+for await (const line of createInterface({ input: createReadStream(file).pipe(createGunzip()) })) {
+  const ev = JSON.parse(line);
+  if (ev.event === 'param') period = ev.data.period;
+  else if (ev.event === 'start') start = ev.data[0][0];
+  else if (ev.event === 'metric') for (const [n, m] of Object.entries(ev.data)) meta[n] = m.type;
+  else if (ev.event === 'snapshot') {
+    const row = {};
+    const names = Object.keys(meta).sort();
+    ev.data.forEach((vals, i) => {
+      if (!names[i]) return;
+      const agg = AGG[meta[names[i]]] || [];
+      row[names[i]] = Object.fromEntries(agg.map((a, j) => [a, vals[j]]));
+    });
+    snaps.push(row);
+  }
 }
 
-const pct = (arr, q) => {
-  if (!arr.length) return 0;
-  arr.sort((a, b) => a - b);
-  return arr[Math.min(arr.length - 1, Math.floor(q * arr.length))];
-};
-const rows = [...buckets.entries()].sort((a, b) => a[0] - b[0]).map(([k, b]) => ({
-  t: (k * W) / 1000,
-  vus: b.vus,
-  rps: +(b.reqs / (W / 1000)).toFixed(0),
-  avg: b.dur.length ? +(b.dur.reduce((s, x) => s + x, 0) / b.dur.length).toFixed(1) : 0,
-  p95: +pct(b.dur, 0.95).toFixed(1),
-  err: b.reqs ? +((100 * b.failed) / b.reqs).toFixed(2) : 0,
-}));
+const rows = [];
+for (let i = 0; i < snaps.length; i += group) {
+  const chunk = snaps.slice(i, i + group);
+  const get = (s, m, a) => (s[m] && s[m][a]) || 0;
+  const reqs = chunk.reduce((s, x) => s + get(x, 'http_reqs', 'count'), 0);
+  const avg = reqs ? chunk.reduce((s, x) => s + get(x, 'http_req_duration', 'avg') * get(x, 'http_reqs', 'count'), 0) / reqs : 0;
+  const errs = reqs ? chunk.reduce((s, x) => s + get(x, 'http_req_failed', 'rate') * get(x, 'http_reqs', 'count'), 0) / reqs : 0;
+  rows.push({
+    t: Math.round(((i + group) * period) / 1000),
+    vus: Math.max(...chunk.map((x) => get(x, 'vus', 'value'))),
+    rps: Math.round(reqs / ((chunk.length * period) / 1000)),
+    avg: +avg.toFixed(1),
+    p95: +Math.max(...chunk.map((x) => get(x, 'http_req_duration', 'p(95)'))).toFixed(1),
+    p99: +Math.max(...chunk.map((x) => get(x, 'http_req_duration', 'p(99)'))).toFixed(1),
+    err: +(100 * errs).toFixed(2),
+  });
+}
 
-console.log('t,s   VUs   req/s   avg,ms   p95,ms   err,%');
+console.log('  t,s   VUs   req/s   avg,ms   p95,ms   p99,ms   err,%');
 for (const r of rows) {
-  console.log(`${String(r.t).padStart(5)} ${String(r.vus).padStart(5)} ${String(r.rps).padStart(7)} ${String(r.avg).padStart(8)} ${String(r.p95).padStart(8)} ${String(r.err).padStart(7)}`);
+  console.log([r.t, r.vus, r.rps, r.avg, r.p95, r.p99, r.err].map((v, i) => String(v).padStart(i ? 8 : 5)).join(''));
 }
-if (csvOut) {
-  writeFileSync(csvOut, 't_s,vus,rps,avg_ms,p95_ms,err_pct\n' + rows.map((r) => [r.t, r.vus, r.rps, r.avg, r.p95, r.err].join(',')).join('\n'));
-}
+if (csvOut) writeFileSync(csvOut, 't_s,vus,rps,avg_ms,p95_ms,p99_ms,err_pct\n' + rows.map((r) => Object.values(r).join(',')).join('\n') + '\n');
