@@ -1,44 +1,70 @@
-# Production-like stack: PostgreSQL + TravelerAPI.
-#   cp .env.example .env   # set a real DB_PASSWORD
+# Production-like stack: PostgreSQL primary + replica + TravelerAPI.
+#   cp .env.example .env   # set real passwords
 #   docker compose up --build -d
 # Development overrides (live reload, source mounted): docker-compose.dev.yml
+# Lab 4, step 1: LOGICAL replication (publisher -> subscriber).
 name: travel_planner
 
+x-postgres: &postgres-base
+  image: postgres:18-alpine
+  restart: unless-stopped
+  networks: [backend]
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+    interval: 5s
+    timeout: 5s
+    retries: 10
+    start_period: 20s
+  deploy:
+    resources:
+      limits:
+        cpus: "2.0"
+        memory: 1G
+  shm_size: 256m
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+x-postgres-env: &postgres-env
+  POSTGRES_DB: ${DB_NAME:?set DB_NAME in .env}
+  POSTGRES_USER: ${DB_USER:?set DB_USER in .env}
+  POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+  POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+  # replication role: created by the init scripts from these variables (no secrets in SQL files)
+  REPL_USER: ${REPL_USER:?set REPL_USER in .env}
+  REPL_PASSWORD: ${REPL_PASSWORD:?set REPL_PASSWORD in .env}
+
 services:
-  # PostgreSQL 18: data in a named volume, schema created by db/migrations on first start
+  # PostgreSQL 18 publisher (master): schema from db/migrations, publication for all tables
   postgres:
-    image: postgres:18-alpine
+    <<: *postgres-base
     container_name: travel_planner_db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${DB_NAME:?set DB_NAME in .env}
-      POSTGRES_USER: ${DB_USER:?set DB_USER in .env}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    environment: *postgres-env
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=10", "-c", "max_wal_senders=10"]
     volumes:
       - pgdata:/var/lib/postgresql
-      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+      - ./db/migrations/001_create_tables.sql:/docker-entrypoint-initdb.d/001_create_tables.sql:ro
+      - ./db/replication/logical/publisher/100_publication.sh:/docker-entrypoint-initdb.d/100_publication.sh:ro
     ports:
       - "127.0.0.1:${DB_PORT:-5433}:5432"
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-    deploy:
-      resources:
-        limits:
-          cpus: "2.0"
-          memory: 1G
-    shm_size: 256m
-    logging:
-      driver: json-file
-      options: { max-size: "10m", max-file: "3" }
 
-  # TravelerAPI (Node.js), unprivileged user, read-only root filesystem
+  # PostgreSQL 18 subscriber (slave): same schema (logical replication does not copy DDL), subscription to the master
+  postgres_replica:
+    <<: *postgres-base
+    container_name: travel_planner_replica
+    environment:
+      <<: *postgres-env
+      PRIMARY_HOST: postgres
+    volumes:
+      - pgdata_replica:/var/lib/postgresql
+      - ./db/migrations/001_create_tables.sql:/docker-entrypoint-initdb.d/001_create_tables.sql:ro
+      - ./db/replication/logical/subscriber/100_subscription.sh:/docker-entrypoint-initdb.d/100_subscription.sh:ro
+    ports:
+      - "127.0.0.1:${REPLICA_PORT:-55432}:5432"
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # TravelerAPI (Node.js), unprivileged user, read-only root filesystem; writes and reads go to the master
   app:
     build:
       context: .
@@ -58,10 +84,8 @@ services:
     ports:
       - "${APP_PORT:-4567}:4567"
     depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - backend
+      postgres: { condition: service_healthy }
+    networks: [backend]
     read_only: true
     tmpfs:
       - /tmp
@@ -78,6 +102,7 @@ services:
 
 volumes:
   pgdata:
+  pgdata_replica:
 
 networks:
   backend:
