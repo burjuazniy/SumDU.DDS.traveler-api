@@ -1,0 +1,35 @@
+# PgCat: connection pooler + read/write splitting ("write to primary, read from replicas").
+# __PLACEHOLDERS__ are replaced from environment variables at container start (no secrets in git).
+[general]
+host = "0.0.0.0"
+port = 6432
+admin_username = "pgcat_admin"
+admin_password = "__PGCAT_ADMIN_PASSWORD__"
+healthcheck_timeout = 1000
+healthcheck_delay = 30000
+shutdown_timeout = 5000
+ban_time = 60
+log_client_connections = false
+log_client_disconnections = false
+
+[pools.__DB_NAME__]
+pool_mode = "transaction"
+# SELECT -> any server (replicas + primary), everything else -> primary
+default_role = "any"
+query_parser_enabled = true
+query_parser_read_write_splitting = true
+primary_reads_enabled = true
+load_balancing_mode = "random"
+
+[pools.__DB_NAME__.users.0]
+username = "__DB_USER__"
+password = "__DB_PASSWORD__"
+pool_size = 20
+
+[pools.__DB_NAME__.shards.0]
+database = "__DB_NAME__"
+servers = [
+  ["postgres", 5432, "primary"],
+  ["postgres_replica_1", 5432, "replica"],
+  ["postgres_replica_2", 5432, "replica"],
+]

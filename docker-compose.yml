@@ -2,7 +2,7 @@
 #   cp .env.example .env   # set real passwords
 #   docker compose up --build -d
 # Development overrides (live reload, source mounted): docker-compose.dev.yml
-# Lab 4, step 3: PHYSICAL streaming replication, primary + 2 hot standbys, SYNCHRONOUS quorum ANY 1.
+# Lab 4, step 4: primary + 2 synchronous (quorum ANY 1) hot standbys behind PgCat (read/write splitting).
 name: travel_planner
 
 x-postgres: &postgres-base
@@ -89,7 +89,37 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
 
-  # TravelerAPI (Node.js), unprivileged user, read-only root filesystem; writes and reads go to the master
+  # PgCat: pooler/router in front of the cluster; the application connects only to it
+  pgcat:
+    image: ghcr.io/postgresml/pgcat@sha256:627761f6dcbc8c0d17809445d7441518e2452c6d4fbdcc2a9986871d9e3e1176  # 1.2.0
+    container_name: travel_planner_pgcat
+    restart: unless-stopped
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        sed -e "s|__DB_NAME__|$DB_NAME|g" -e "s|__DB_USER__|$DB_USER|g"
+        -e "s|__DB_PASSWORD__|$DB_PASSWORD|g" -e "s|__PGCAT_ADMIN_PASSWORD__|$PGCAT_ADMIN_PASSWORD|g"
+        /etc/pgcat/pgcat.toml.tmpl > /tmp/pgcat.toml && exec pgcat /tmp/pgcat.toml
+    environment:
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      PGCAT_ADMIN_PASSWORD: ${PGCAT_ADMIN_PASSWORD:?set PGCAT_ADMIN_PASSWORD in .env}
+      RUST_LOG: warn
+    volumes:
+      - ./pgcat/pgcat.toml.tmpl:/etc/pgcat/pgcat.toml.tmpl:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      postgres_replica_1: { condition: service_healthy }
+      postgres_replica_2: { condition: service_healthy }
+    networks: [backend]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+
+  # TravelerAPI (Node.js), unprivileged user, read-only root filesystem; all queries go through PgCat
   app:
     build:
       context: .
@@ -98,8 +128,8 @@ services:
     container_name: travel_planner_api
     restart: unless-stopped
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
+      DB_HOST: pgcat
+      DB_PORT: 6432
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -109,7 +139,7 @@ services:
     ports:
       - "127.0.0.1:${APP_PORT:-4567}:4567"
     depends_on:
-      postgres: { condition: service_healthy }
+      - pgcat
     networks: [backend]
     read_only: true
     tmpfs:
