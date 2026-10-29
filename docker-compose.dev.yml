@@ -1,0 +1,21 @@
+# Development overrides: source code mounted into the container, restart on change.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+services:
+  # API: node --watch reloads on every change in ./src
+  app:
+    command: ["node", "--watch", "src/server.js"]
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+    volumes:
+      - ./src:/app/src:ro
+    read_only: false
+
+  # PostgreSQL: separate volume so dev data never mixes with the prod-like stack
+  postgres:
+    volumes:
+      - pgdata_dev:/var/lib/postgresql
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  pgdata_dev:

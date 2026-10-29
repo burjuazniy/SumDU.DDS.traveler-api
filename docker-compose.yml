@@ -1,0 +1,84 @@
+# Production-like stack: PostgreSQL + TravelerAPI.
+#   cp .env.example .env   # set a real DB_PASSWORD
+#   docker compose up --build -d
+# Development overrides (live reload, source mounted): docker-compose.dev.yml
+name: travel_planner
+
+services:
+  # PostgreSQL 18: data in a named volume, schema created by db/migrations on first start
+  postgres:
+    image: postgres:18-alpine
+    container_name: travel_planner_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:?set DB_NAME in .env}
+      POSTGRES_USER: ${DB_USER:?set DB_USER in .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+    shm_size: 256m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # TravelerAPI (Node.js), unprivileged user, read-only root filesystem
+  app:
+    build:
+      context: .
+      target: runtime
+    image: traveler-api:latest
+    container_name: travel_planner_api
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_POOL: ${DB_POOL:-20}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PORT: 4567
+    ports:
+      - "${APP_PORT:-4567}:4567"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  pgdata:
+
+networks:
+  backend:
+    driver: bridge
