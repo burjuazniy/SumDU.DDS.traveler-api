@@ -9,13 +9,12 @@ const LOCATION_COLUMNS = `id, travel_plan_id, name, address, latitude, longitude
 export async function listPlans({ page, limit }) {
   const offset = (page - 1) * limit;
   const [rows, total] = await Promise.all([
+    // Page first (index on updated_at), then count locations only for that page.
     query(
-      `SELECT ${PLAN_COLUMNS.split(',').map((c) => `p.${c.trim()}`).join(', ')},
-              COUNT(l.id)::int AS location_count
+      `SELECT ${PLAN_COLUMNS},
+              (SELECT COUNT(*)::int FROM locations l WHERE l.travel_plan_id = p.id) AS location_count
          FROM travel_plans p
-         LEFT JOIN locations l ON l.travel_plan_id = p.id
-        GROUP BY p.id
-        ORDER BY p.updated_at DESC, p.id
+        ORDER BY p.updated_at DESC
         LIMIT $1 OFFSET $2`,
       [limit, offset],
     ),
