@@ -40,7 +40,7 @@ services:
     <<: *postgres-base
     container_name: travel_planner_db
     environment: *postgres-env
-    command: ["postgres", "-c", "wal_level=replica", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10", "-c", "hot_standby=on"]
+    command: ["postgres", "-c", "wal_level=replica", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10", "-c", "hot_standby=on", "-c", "wal_keep_size=256MB"]
     volumes:
       - pgdata:/var/lib/postgresql
       - ./db/migrations/001_create_tables.sql:/docker-entrypoint-initdb.d/001_create_tables.sql:ro
