@@ -5,3 +5,5 @@ data/
 reports/*.html
 reports/*.json
 !reports/.keep
+tests/performance-tests/reports/*
+!tests/performance-tests/reports/.keep

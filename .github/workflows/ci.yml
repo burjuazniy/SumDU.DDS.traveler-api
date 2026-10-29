@@ -1,0 +1,56 @@
+# CI: functional (Hurl), concurrency and k6 smoke tests against a fresh PostgreSQL 18.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: travel
+          POSTGRES_PASSWORD: travel
+          POSTGRES_DB: travel_planner
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U travel -d travel_planner"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DB_HOST: 127.0.0.1
+      DB_USER: travel
+      DB_PASSWORD: travel
+      DB_NAME: travel_planner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run migrate
+      - name: Start API
+        run: |
+          nohup node src/server.js > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:4567/health && break; sleep 1; done
+      - name: Install Hurl and k6
+        run: |
+          curl -sSLo hurl.deb https://github.com/Orange-OpenSource/hurl/releases/download/8.0.1/hurl_8.0.1_amd64.deb
+          sudo apt-get install -y ./hurl.deb
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install -y k6
+      - name: Hurl functional tests
+        run: hurl --test tests/ --variables-file tests/variables.properties
+      - name: Concurrency tests
+        run: node scripts/race-demo.js
+      - name: k6 smoke test
+        run: k6 run tests/performance-tests/tests/smoke-test.js
+      - name: API log
+        if: always()
+        run: cat api.log
