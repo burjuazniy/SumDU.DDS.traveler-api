@@ -2,7 +2,7 @@
 #   cp .env.example .env   # set real passwords
 #   docker compose up --build -d
 # Development overrides (live reload, source mounted): docker-compose.dev.yml
-# Lab 4, step 2: PHYSICAL streaming replication, primary + 2 hot standby replicas (async).
+# Lab 4, step 3: PHYSICAL streaming replication, primary + 2 hot standbys, SYNCHRONOUS quorum ANY 1.
 name: travel_planner
 
 x-postgres: &postgres-base
@@ -39,12 +39,16 @@ services:
   postgres:
     <<: *postgres-base
     container_name: travel_planner_db
-    environment: *postgres-env
+    environment:
+      <<: *postgres-env
+      # quorum: COMMIT waits for WAL on any 1 of the 2 standbys (RPO 0, survives the loss of one replica)
+      SYNC_STANDBYS: ${SYNC_STANDBYS-ANY 1 (replica_1, replica_2)}
     command: ["postgres", "-c", "wal_level=replica", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10", "-c", "hot_standby=on", "-c", "wal_keep_size=256MB"]
     volumes:
       - pgdata:/var/lib/postgresql
       - ./db/migrations/001_create_tables.sql:/docker-entrypoint-initdb.d/001_create_tables.sql:ro
       - ./db/replication/physical/100_replication_role.sh:/docker-entrypoint-initdb.d/100_replication_role.sh:ro
+      - ./db/replication/physical/200_synchronous.sh:/docker-entrypoint-initdb.d/200_synchronous.sh:ro
     ports:
       - "127.0.0.1:${DB_PORT:-5433}:5432"
 
