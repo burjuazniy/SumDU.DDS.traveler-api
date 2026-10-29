@@ -1,0 +1,873 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Travel Planner API",
+    "description": "Simple REST API for planning travel itineraries with locations",
+    "version": "1.0.0",
+    "contact": {
+      "name": "API Support",
+      "email": "support@travelplanner.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Development server"
+    }
+  ],
+  "paths": {
+    "/api/travel-plans": {
+      "get": {
+        "summary": "List travel plans",
+        "description": "Retrieve all travel plans",
+        "tags": ["Travel Plans"],
+        "responses": {
+          "200": {
+            "description": "List of travel plans",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TravelPlanSummary"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create travel plan",
+        "description": "Create a new travel plan",
+        "tags": ["Travel Plans"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTravelPlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Travel plan created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TravelPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/travel-plans/{id}": {
+      "get": {
+        "summary": "Get travel plan",
+        "description": "Retrieve a specific travel plan with all locations",
+        "tags": ["Travel Plans"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/travel_plan_id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Travel plan details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TravelPlanDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update travel plan",
+        "description": "Update a travel plan using optimistic locking",
+        "tags": ["Travel Plans"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/travel_plan_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTravelPlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Travel plan updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TravelPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete travel plan",
+        "description": "Delete a travel plan and all associated locations",
+        "tags": ["Travel Plans"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/travel_plan_id"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Travel plan deleted successfully"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/travel-plans/{id}/locations": {
+      "post": {
+        "summary": "Add location to plan",
+        "description": "Add a new location to a travel plan (auto-ordered)",
+        "tags": ["Locations"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/travel_plan_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLocationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Location added successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Location"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/locations/{id}": {
+      "put": {
+        "summary": "Update location",
+        "description": "Update location details",
+        "tags": ["Locations"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/location_id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLocationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Location updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Location"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete location",
+        "description": "Delete a location from travel plan",
+        "tags": ["Locations"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/location_id"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Location deleted successfully"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "description": "Check API health status",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "API is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheck"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "API is unhealthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheck"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TravelPlan": {
+        "type": "object",
+        "required": ["id", "title", "currency", "is_public", "version", "created_at", "updated_at"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the travel plan"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Title of the travel plan"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional description of the travel plan"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "Start date of the trip"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "End date of the trip"
+          },
+          "budget": {
+            "type": "number",
+            "format": "decimal",
+            "minimum": 0,
+            "multipleOf": 0.01,
+            "example": 150.75,
+            "nullable": true,
+            "description": "Budget amount with 2 decimal precision"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "default": "USD",
+            "description": "Currency code (ISO 4217)"
+          },
+          "is_public": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether the plan is publicly visible"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Version number for optimistic locking"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+          }
+        }
+      },
+      "TravelPlanSummary": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TravelPlan"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "location_count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of locations in this plan"
+              }
+            }
+          }
+        ]
+      },
+      "TravelPlanDetails": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TravelPlan"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "locations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Location"
+                },
+                "description": "All locations in this travel plan, ordered by visit_order"
+              }
+            }
+          }
+        ]
+      },
+      "CreateTravelPlanRequest": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Title of the travel plan"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional description"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "Start date of the trip"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "End date of the trip (must be >= startDate)"
+          },
+          "budget": {
+            "type": "number",
+            "minimum": 0,
+            "nullable": true,
+            "description": "Total budget for the trip"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "default": "USD",
+            "description": "Currency code (ISO 4217)"
+          },
+          "is_public": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether the plan should be publicly visible"
+          }
+        }
+      },
+      "UpdateTravelPlanRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateTravelPlanRequest"
+          },
+          {
+            "type": "object",
+            "required": ["version"],
+            "properties": {
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Current version number for optimistic locking"
+              }
+            }
+          }
+        ]
+      },
+      "Location": {
+        "type": "object",
+        "required": ["id", "travel_plan_id", "name", "visit_order", "created_at"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the location"
+          },
+          "travel_plan_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID of the travel plan this location belongs to"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Name of the location"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true,
+            "description": "Address or description of the location"
+          },
+	  "latitude": {
+	    "type": "number",
+            "format": "decimal",
+            "minimum": -90,
+            "maximum": 90,
+            "multipleOf": 0.000001,
+            "example": 48.858844,
+            "nullable": true,
+            "description": "Latitude coordinate with 6 decimal precision (~11cm accuracy)"
+          },
+          "longitude": {
+             "type": "number", 
+             "format": "decimal",
+             "minimum": -180,
+             "maximum": 180,
+             "multipleOf": 0.000001,
+             "example": 2.294351,
+             "nullable": true,
+             "description": "Longitude coordinate with 6 decimal precision (~11cm accuracy)"
+          },
+          "visit_order": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Order in which this location will be visited"
+          },
+          "arrival_date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Planned arrival date and time"
+          },
+          "departure_date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Planned departure date and time (must be >= arrivalDate)"
+          },
+          "budget": {
+            "type": "number",
+            "minimum": 0,
+            "nullable": true,
+            "description": "Budget allocated for this location"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "description": "Additional notes about this location"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+          }
+        }
+      },
+      "CreateLocationRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Name of the location"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true,
+            "description": "Address or description"
+          },
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "nullable": true,
+            "description": "Latitude coordinate"
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "nullable": true,
+            "description": "Longitude coordinate"
+          },
+          "arrival_date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Planned arrival date and time"
+          },
+          "departure_date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Planned departure date and time"
+          },
+          "budget": {
+            "type": "number",
+            "minimum": 0,
+            "nullable": true,
+            "description": "Budget allocated for this location"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "description": "Additional notes"
+          }
+        }
+      },
+      "UpdateLocationRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Name of the location"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true,
+            "description": "Address or description"
+          },
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "nullable": true,
+            "description": "Latitude coordinate"
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "nullable": true,
+            "description": "Longitude coordinate"
+          },
+          "arrival_date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Planned arrival date and time"
+          },
+          "departure_date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Planned departure date and time"
+          },
+          "budget": {
+            "type": "number",
+            "minimum": 0,
+            "nullable": true,
+            "description": "Budget allocated for this location"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "description": "Additional notes"
+          }
+        }
+      },
+      "HealthCheck": {
+        "type": "object",
+        "required": ["status", "timestamp"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["healthy", "unhealthy"],
+            "description": "Overall health status"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time of health check"
+          },
+          "uptime": {
+            "type": "number",
+            "description": "Uptime in milliseconds"
+          },
+          "database": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["healthy", "unhealthy"]
+              },
+              "responseTime": {
+                "type": "number",
+                "description": "Database response time in milliseconds"
+              }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional error details"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Error timestamp"
+          }
+        }
+      },
+      "ConflictResponse": {
+        "type": "object",
+        "required": ["error", "currentVersion"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Conflict error message"
+          },
+          "current_version": {
+            "type": "integer",
+            "description": "Current version of the resource"
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable conflict explanation"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "travel_plan_id": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Travel plan ID",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "location_id": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Location ID",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "responses": {
+      "ValidationError": {
+        "description": "Validation error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "examples": {
+              "missingTitle": {
+                "summary": "Missing required field",
+                "value": {
+                  "error": "Validation error",
+                  "details": ["Title is required"],
+                  "timestamp": "2025-01-16T10:30:00Z"
+                }
+              },
+              "invalid_date": {
+                "summary": "Invalid date range",
+                "value": {
+                  "error": "Validation error",
+                  "details": ["End date must be after start date"],
+                  "timestamp": "2025-01-16T10:30:00Z"
+                }
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "examples": {
+              "planNotFound": {
+                "summary": "Travel plan not found",
+                "value": {
+                  "error": "Travel plan not found",
+                  "timestamp": "2025-01-16T10:30:00Z"
+                }
+              },
+              "locationNotFound": {
+                "summary": "Location not found",
+                "value": {
+                  "error": "Location not found",
+                  "timestamp": "2025-01-16T10:30:00Z"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ConflictError": {
+        "description": "Optimistic locking conflict",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ConflictResponse"
+            },
+            "examples": {
+              "version_conflict": {
+                "summary": "Version conflict",
+                "value": {
+                  "error": "Conflict: Travel plan was modified by another user",
+                  "currentVersion": 5,
+                  "message": "Please refresh and try again"
+                }
+              }
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Internal server error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "examples": {
+              "serverError": {
+                "summary": "Internal server error",
+                "value": {
+                  "error": "Internal server error",
+                  "timestamp": "2025-01-16T10:30:00Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Travel Plans",
+      "description": "Operations for managing travel plans"
+    },
+    {
+      "name": "Locations",
+      "description": "Operations for managing locations within travel plans"
+    },
+    {
+      "name": "System",
+      "description": "System health and status endpoints"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "traveler-api",
+  "version": "1.0.0",
+  "description": "Travel Planner REST API with PostgreSQL (SumDU, Distributed Data Storages labs)",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "migrate": "node scripts/migrate.js",
+    "test": "hurl --test tests/ --variables-file tests/variables.properties",
+    "test:race": "node scripts/race-demo.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.22.3",
+    "pg": "^8.23.1"
+  }
+}
