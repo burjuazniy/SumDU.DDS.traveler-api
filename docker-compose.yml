@@ -1,8 +1,8 @@
-# Production-like stack: PostgreSQL primary + replica + TravelerAPI.
+# Production-like stack: PostgreSQL primary + 2 replicas + TravelerAPI.
 #   cp .env.example .env   # set real passwords
 #   docker compose up --build -d
 # Development overrides (live reload, source mounted): docker-compose.dev.yml
-# Lab 4, step 1: LOGICAL replication (publisher -> subscriber).
+# Lab 4, step 2: PHYSICAL streaming replication, primary + 2 hot standby replicas (async).
 name: travel_planner
 
 x-postgres: &postgres-base
@@ -35,32 +35,53 @@ x-postgres-env: &postgres-env
   REPL_PASSWORD: ${REPL_PASSWORD:?set REPL_PASSWORD in .env}
 
 services:
-  # PostgreSQL 18 publisher (master): schema from db/migrations, publication for all tables
+  # PostgreSQL 18 primary: schema from db/migrations, replication role + pg_hba rules from env
   postgres:
     <<: *postgres-base
     container_name: travel_planner_db
     environment: *postgres-env
-    command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=10", "-c", "max_wal_senders=10"]
+    command: ["postgres", "-c", "wal_level=replica", "-c", "max_wal_senders=10", "-c", "max_replication_slots=10", "-c", "hot_standby=on"]
     volumes:
       - pgdata:/var/lib/postgresql
       - ./db/migrations/001_create_tables.sql:/docker-entrypoint-initdb.d/001_create_tables.sql:ro
-      - ./db/replication/logical/publisher/100_publication.sh:/docker-entrypoint-initdb.d/100_publication.sh:ro
+      - ./db/replication/physical/100_replication_role.sh:/docker-entrypoint-initdb.d/100_replication_role.sh:ro
     ports:
       - "127.0.0.1:${DB_PORT:-5433}:5432"
 
-  # PostgreSQL 18 subscriber (slave): same schema (logical replication does not copy DDL), subscription to the master
-  postgres_replica:
+  # Hot standby 1: cloned from the primary with pg_basebackup on first start (own replication slot),
+  # then streams WAL. Read-only; schema/DDL arrive with the WAL, nothing to apply by hand.
+  postgres_replica_1:
     <<: *postgres-base
-    container_name: travel_planner_replica
+    container_name: travel_planner_replica_1
+    user: postgres
+    entrypoint: ["bash", "/replica-entrypoint.sh"]
     environment:
       <<: *postgres-env
       PRIMARY_HOST: postgres
+      REPLICA_NAME: replica_1
     volumes:
-      - pgdata_replica:/var/lib/postgresql
-      - ./db/migrations/001_create_tables.sql:/docker-entrypoint-initdb.d/001_create_tables.sql:ro
-      - ./db/replication/logical/subscriber/100_subscription.sh:/docker-entrypoint-initdb.d/100_subscription.sh:ro
+      - pgdata_replica_1:/var/lib/postgresql
+      - ./db/replication/physical/replica-entrypoint.sh:/replica-entrypoint.sh:ro
     ports:
       - "127.0.0.1:${REPLICA_PORT:-55432}:5432"
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  # Hot standby 2: same as replica 1 (bonus task "2 replicas")
+  postgres_replica_2:
+    <<: *postgres-base
+    container_name: travel_planner_replica_2
+    user: postgres
+    entrypoint: ["bash", "/replica-entrypoint.sh"]
+    environment:
+      <<: *postgres-env
+      PRIMARY_HOST: postgres
+      REPLICA_NAME: replica_2
+    volumes:
+      - pgdata_replica_2:/var/lib/postgresql
+      - ./db/replication/physical/replica-entrypoint.sh:/replica-entrypoint.sh:ro
+    ports:
+      - "127.0.0.1:${REPLICA2_PORT:-55433}:5432"
     depends_on:
       postgres: { condition: service_healthy }
 
@@ -82,7 +103,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: 4567
     ports:
-      - "${APP_PORT:-4567}:4567"
+      - "127.0.0.1:${APP_PORT:-4567}:4567"
     depends_on:
       postgres: { condition: service_healthy }
     networks: [backend]
@@ -102,7 +123,8 @@ services:
 
 volumes:
   pgdata:
-  pgdata_replica:
+  pgdata_replica_1:
+  pgdata_replica_2:
 
 networks:
   backend:
