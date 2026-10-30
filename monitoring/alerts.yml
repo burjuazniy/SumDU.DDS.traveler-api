@@ -1,0 +1,29 @@
+# Lab 7: alert rules (visible at http://localhost:9090/alerts).
+groups:
+  - name: traveler
+    rules:
+      - alert: TravelerApiDown
+        expr: up{job="traveler-api"} == 0
+        for: 30s
+        labels: { severity: critical }
+        annotations: { summary: "TravelerAPI is not answering /metrics" }
+      - alert: HighP95Latency
+        expr: histogram_quantile(0.95, sum by (le) (rate(traveler_http_request_duration_seconds_bucket[1m]))) > 0.2
+        for: 1m
+        labels: { severity: warning }
+        annotations: { summary: "p95 latency above the 200 ms requirement" }
+      - alert: High5xxRate
+        expr: sum(rate(traveler_http_request_duration_seconds_count{status=~"5.."}[1m])) / sum(rate(traveler_http_request_duration_seconds_count[1m])) > 0.01
+        for: 1m
+        labels: { severity: critical }
+        annotations: { summary: "More than 1% of requests fail with 5xx" }
+      - alert: DbPoolSaturated
+        expr: traveler_db_pool_connections{state="waiting"} > 0
+        for: 1m
+        labels: { severity: warning }
+        annotations: { summary: "Requests are queueing for a database connection" }
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 30s
+        labels: { severity: critical }
+        annotations: { summary: "postgres_exporter cannot reach PostgreSQL" }

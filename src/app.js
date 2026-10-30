@@ -1,6 +1,7 @@
 import express from 'express';
 import { allDbs } from './db.js';
 import { HttpError, NotFoundError, ValidationError, fromPgError } from './errors.js';
+import { httpMetrics, registry } from './metrics.js';
 import * as plans from './repositories/plans.js';
 import * as locations from './repositories/locations.js';
 import {
@@ -32,8 +33,13 @@ export function createApp() {
     });
     next();
   });
+  app.use(httpMetrics);
   app.use(express.json({ limit: '100kb' }));
 
+  // Prometheus scrape endpoint (lab 7). Not routed through the public load balancer in production.
+  app.get('/metrics', route(async (_req, res) => {
+    res.set('Content-Type', registry.contentType).send(await registry.metrics());
+  }));
 
   app.get('/health', route(async (_req, res) => {
     const t0 = process.hrtime.bigint();

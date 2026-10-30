@@ -1,0 +1,65 @@
+# Lab 7: monitoring stack on top of the main compose file.
+#   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+# Grafana: http://localhost:3000 (dashboard "TravelerAPI — RED & PostgreSQL"), Prometheus: http://localhost:9090
+services:
+  # Exposes PostgreSQL statistics (pg_stat_database, pg_stat_activity, ...) for Prometheus
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    container_name: travel_planner_pg_exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_URI: postgres:5432/${DB_NAME}?sslmode=disable
+      DATA_SOURCE_USER: ${DB_USER}
+      DATA_SOURCE_PASS: ${DB_PASSWORD}
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [backend]
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 128M }
+
+  # Scrapes app:/metrics and the exporter every 5 s, evaluates monitoring/alerts.yml
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: travel_planner_prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks: [backend]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512M }
+
+  # Dashboards provisioned from monitoring/grafana (no manual setup)
+  grafana:
+    image: grafana/grafana:12.1.0
+    container_name: travel_planner_grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/traveler.json
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on: [prometheus]
+    networks: [backend]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
+
+volumes:
+  prometheus_data:
+  grafana_data:

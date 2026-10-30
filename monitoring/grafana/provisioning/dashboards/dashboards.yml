@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: traveler
+    folder: TravelerAPI
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
