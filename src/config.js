@@ -8,5 +8,10 @@ export const config = {
   port: Number(env.PORT || 4567),
   databaseUrl,
   poolSize: Number(env.DB_POOL || 20),
+  // Lab 6: path to mapping.json (vnode digit -> connection string); empty = single database.
+  shardMap: env.SHARD_MAP || '',
+  shardPoolSize: Number(env.SHARD_POOL || 4),
+  dbUser: env.DB_USER || 'travel',
+  dbPassword: env.DB_PASSWORD || 'travel',
   logLevel: env.LOG_LEVEL || 'info',
 };

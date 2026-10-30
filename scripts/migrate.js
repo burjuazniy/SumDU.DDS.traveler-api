@@ -2,12 +2,12 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pool } from '../src/db.js';
+import { allDbs, closeAll } from '../src/db.js';
 
 const dir = fileURLToPath(new URL('../db/migrations/', import.meta.url));
-const files = (await readdir(dir)).filter((f) => f.endsWith('.sql')).sort();
-for (const file of files) {
-  await pool.query(await readFile(join(dir, file), 'utf8'));
-  console.log(`applied ${file}`);
+for (const file of (await readdir(dir)).filter((f) => f.endsWith('.sql')).sort()) {
+  const sql = await readFile(join(dir, file), 'utf8');
+  for (const db of allDbs()) await db.query(sql);
+  console.log(`applied ${file} to ${allDbs().length} database(s)`);
 }
-await pool.end();
+await closeAll();

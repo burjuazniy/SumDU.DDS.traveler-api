@@ -1,0 +1,107 @@
+# Lab 6: application-level sharding. 4 PostgreSQL servers x 4 databases = 16 vnodes (db_0..db_f).
+#   docker compose -f docker-compose.sharding.yml up --build -d
+# The vnode of a plan is the last hex digit of its UUID; shards/mapping.json maps vnode -> server/db.
+# Admin tools (run inside the app container):
+#   docker compose -f docker-compose.sharding.yml exec app node scripts/shard-exec.js /app/shards/sql/<file>.sql
+#   docker compose -f docker-compose.sharding.yml exec app node scripts/shard-move.js 3 postgres_01:5432
+name: travel_planner_sharded
+
+x-shard: &shard
+  image: postgres:18-alpine
+  restart: unless-stopped
+  environment: &shard-env
+    POSTGRES_USER: ${SHARD_ADMIN_USER:?set SHARD_ADMIN_USER in .env}
+    POSTGRES_PASSWORD: ${SHARD_ADMIN_PASSWORD:?set SHARD_ADMIN_PASSWORD in .env}
+    POSTGRES_DB: postgres
+    APP_DB_USER: ${APP_DB_USER:?set APP_DB_USER in .env}
+    APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
+  # wal_level=logical: needed by scripts/shard-move.js; prepared transactions: scripts/shard-exec.js
+  command: ["postgres", "-c", "wal_level=logical", "-c", "max_prepared_transactions=32"]
+  networks: [shards]
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d postgres"]
+    interval: 5s
+    timeout: 5s
+    retries: 10
+    start_period: 30s
+  deploy:
+    resources:
+      limits: { cpus: "1.0", memory: 512M }
+  shm_size: 128m
+
+services:
+  # vnodes 0-3
+  postgres_00:
+    <<: *shard
+    container_name: shard_00
+    environment: { <<: *shard-env, SHARD_DBS: "db_0 db_1 db_2 db_3" }
+    volumes:
+      - shard00:/var/lib/postgresql
+      - ./db/migrations:/migrations:ro
+      - ./db/sharding/init-shards.sh:/docker-entrypoint-initdb.d/init-shards.sh:ro
+  # vnodes 4-7
+  postgres_01:
+    <<: *shard
+    container_name: shard_01
+    environment: { <<: *shard-env, SHARD_DBS: "db_4 db_5 db_6 db_7" }
+    volumes:
+      - shard01:/var/lib/postgresql
+      - ./db/migrations:/migrations:ro
+      - ./db/sharding/init-shards.sh:/docker-entrypoint-initdb.d/init-shards.sh:ro
+  # vnodes 8-b
+  postgres_02:
+    <<: *shard
+    container_name: shard_02
+    environment: { <<: *shard-env, SHARD_DBS: "db_8 db_9 db_a db_b" }
+    volumes:
+      - shard02:/var/lib/postgresql
+      - ./db/migrations:/migrations:ro
+      - ./db/sharding/init-shards.sh:/docker-entrypoint-initdb.d/init-shards.sh:ro
+  # vnodes c-f
+  postgres_03:
+    <<: *shard
+    container_name: shard_03
+    environment: { <<: *shard-env, SHARD_DBS: "db_c db_d db_e db_f" }
+    volumes:
+      - shard03:/var/lib/postgresql
+      - ./db/migrations:/migrations:ro
+      - ./db/sharding/init-shards.sh:/docker-entrypoint-initdb.d/init-shards.sh:ro
+
+  # TravelerAPI in sharded mode: SHARD_MAP enables the per-vnode connection pools
+  app:
+    build: { context: ., target: runtime }
+    image: traveler-api:latest
+    container_name: travel_planner_api_sharded
+    restart: unless-stopped
+    environment:
+      SHARD_MAP: /app/shards/mapping.json
+      SHARD_POOL: ${SHARD_POOL:-4}
+      DB_USER: ${APP_DB_USER}
+      DB_PASSWORD: ${APP_DB_PASSWORD}
+      APP_DB_USER: ${APP_DB_USER}
+      SHARD_ADMIN_USER: ${SHARD_ADMIN_USER}
+      SHARD_ADMIN_PASSWORD: ${SHARD_ADMIN_PASSWORD}
+      PORT: 4567
+    ports:
+      - "${APP_PORT:-4567}:4567"
+    volumes:
+      - ./shards:/app/shards   # mapping.json is rewritten by shard-move.js
+    depends_on:
+      postgres_00: { condition: service_healthy }
+      postgres_01: { condition: service_healthy }
+      postgres_02: { condition: service_healthy }
+      postgres_03: { condition: service_healthy }
+    networks: [shards]
+    security_opt: [no-new-privileges:true]
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512M }
+
+volumes:
+  shard00:
+  shard01:
+  shard02:
+  shard03:
+
+networks:
+  shards:

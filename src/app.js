@@ -1,5 +1,5 @@
 import express from 'express';
-import { pool } from './db.js';
+import { allDbs } from './db.js';
 import { HttpError, NotFoundError, ValidationError, fromPgError } from './errors.js';
 import * as plans from './repositories/plans.js';
 import * as locations from './repositories/locations.js';
@@ -34,10 +34,11 @@ export function createApp() {
   });
   app.use(express.json({ limit: '100kb' }));
 
+
   app.get('/health', route(async (_req, res) => {
     const t0 = process.hrtime.bigint();
     try {
-      await pool.query('SELECT 1');
+      await Promise.all(allDbs().map((db) => db.query('SELECT 1')));
       const responseTime = Number(process.hrtime.bigint() - t0) / 1e6;
       res.json({
         status: 'healthy',
