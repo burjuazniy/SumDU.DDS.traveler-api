@@ -13,5 +13,7 @@ export const config = {
   shardPoolSize: Number(env.SHARD_POOL || 4),
   dbUser: env.DB_USER || 'travel',
   dbPassword: env.DB_PASSWORD || 'travel',
+  // Lab 8: 'relational' (default) or 'jsonb'
+  storage: env.STORAGE || 'relational',
   logLevel: env.LOG_LEVEL || 'info',
 };

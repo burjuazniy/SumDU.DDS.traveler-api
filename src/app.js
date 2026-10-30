@@ -1,13 +1,17 @@
 import express from 'express';
 import { allDbs } from './db.js';
 import { HttpError, NotFoundError, ValidationError, fromPgError } from './errors.js';
+import { config } from './config.js';
 import { httpMetrics, registry } from './metrics.js';
-import * as plans from './repositories/plans.js';
-import * as locations from './repositories/locations.js';
 import {
   isUuid, validateLocationCreate, validateLocationUpdate, validatePagination,
   validatePlanCreate, validatePlanUpdate,
 } from './validation.js';
+
+// STORAGE=relational (labs 1-7: locations table) or jsonb (lab 8: locations inside travel_plans).
+const repoDir = config.storage === 'jsonb' ? './repositories/jsonb' : './repositories';
+const plans = await import(`${repoDir}/plans.js`);
+const locations = await import(`${repoDir}/locations.js`);
 
 const startedAt = Date.now();
 
